@@ -8,6 +8,9 @@ dir=$home/Motif_analysis_automation
 input_summits=$home/ZNF143_ChIP_summits.bed
 mock_summits=$home/ZNF143_mock_summits.bed
 
+
+mkdir -p $dir/TOMTOM/
+
 #Initialize variables
 #What factor we ChIP'ed
 factor=ZNF143
@@ -30,7 +33,7 @@ ncore=1
 #Threshold for MEME e-value
 e_thresh=.05
 #Threshold for TOMTOM q-value
-tomtom_thresh=.01
+tomtom_thresh=.05
 #Goal proportion of peaks remaining
 goal=0.05
 
@@ -105,7 +108,7 @@ meme_sites=$(awk '/sites =/ { for(i=1; i<=NF; i++) if ($i ~ /^[0-9]+$/) print in
 p=$(mast -mt 1 -nostatus -hit_list -best -bfile $hs1_bkgrnd $motifs $topPeaks.fasta | awk 'NR>3 {print last} {last=$0}' | sort -k 8,8g | head -n $meme_sites | tail -n 1 | awk '{print $8}')
 mast -mt $p -nostatus -hit_list -best -bfile $hs1_bkgrnd $motifs $all_peaks.fasta > $hits.txt
 
-echo the file $hits.txt (hits.txt) 
+echo the file $hits.txt 
 head $hits.txt
 
 #AF using mast now like before
@@ -153,11 +156,9 @@ awk 'BEGIN {OFS="\t"} NR > 2 {split($1,a,"[:-]"); print a[1], a[2], a[3], $2, $7
 
 
 #Remove peaks with the motif(s)
-cat $all_peaks.bed | intersectBed -v -a stdin -b $hits.bed > $without.bed
+intersectBed -v -a $all_peaks.bed -b $hits.bed > $without.bed
 #slopBed -b -$slop -i $all_peaks.bed -g $sizes | intersectBed -v -a stdin -b $hits.bed > $without.bed
 
-echo this is the $without.bed file (without.bed)
-head $without.bed
 
 #Print an update
 peaks_remaining=$(wc -l $without.bed | awk '{print $1}')
@@ -169,13 +170,9 @@ echo "$peaks_remaining peaks remaining"
 
 
 #Sort out the top 1000 peaks
-sort -nrk5,5 $without.bed | head -n $input_peak_number > ${without}_top${input_peak_number}.bed
-fastaFromBed -fi $genome -bed ${without}_top${input_peak_number}.bed -fo ${without}_top${input_peak_number}.fasta
-
 without_top=${without}_top${input_peak_number}
-echo this is the subsetted $without_top files (without_top)
-head $without_top.bed
-head $without_top.fasta
+sort -nrk5,5 $without.bed | head -n $input_peak_number > ${without_top}.bed
+fastaFromBed -fi $genome -bed ${without_top}.bed -fo ${without_top}.fasta
 
 
 #Loop through tools, objective functions, and motif widths, repeating loop until all methods strike out
@@ -201,7 +198,7 @@ do
     fi
     while (( objfun_strikes != 3 )) 
     do
-      for objfun in cd de classic NA
+      for objfun in classic cd de NA
       do 
         #Keep going until either no significant motifs or no matches (breaks within if statements below)
         while (( objfun_strikes != 3 ))
@@ -232,16 +229,16 @@ do
           #Identify motifs
           if [[ "$objfun" == "de" && "$tool" == "streme" ]]
           then
-            streme --verbosity 1 --oc $meme_out --thresh $e_thresh --evalue --dna --objfun $objfun --minw 8 --maxw 15 --bfile $hs1_bkgrnd --n $control --p $without.fasta
+            streme --verbosity 1 --oc $meme_out --thresh $e_thresh --evalue --dna --objfun $objfun --minw 6 --maxw 15 --bfile $hs1_bkgrnd --n $control.fasta --p $without.fasta
           elif [[ "$objfun" != "de" && "$tool" == "streme" ]]
           then
-            streme --verbosity 1 --oc $meme_out --thresh $e_thresh --evalue --dna --objfun $objfun --minw 8 --maxw 15 --bfile $hs1_bkgrnd --p $without.fasta
+            streme --verbosity 1 --oc $meme_out --thresh $e_thresh --evalue --dna --objfun $objfun --minw 6 --maxw 15 --bfile $hs1_bkgrnd --p $without.fasta
           elif [[ "$objfun" == "de" && "$tool" == "meme" ]]
           then
-            meme -nostatus -p $ncore -oc $meme_out -brief 100000 -evt $e_thresh -minsites $minsites -objfun $objfun -minw 8 -maxw 12 -wg 0 -ws 0 -searchsize 0 -revcomp -dna -bfile $hs1_bkgrnd -neg $control $without_top.fasta #MJG use subset of data 
+            meme -p $ncore -oc $meme_out -brief 100000 -evt $e_thresh -minsites $minsites -objfun $objfun -minw 8 -maxw 18 -wg 0 -ws 0 -searchsize 0 -revcomp -dna -bfile $hs1_bkgrnd -neg $control.fasta $without_top.fasta #MJG use subset of data 
           elif [[ "$objfun" != "de" && "$tool" == "meme" ]]
           then
-            meme -nostatus -p $ncore -oc $meme_out -brief 100000 -evt $e_thresh -minsites $minsites -objfun $objfun -minw 8 -maxw 12 -wg 0 -ws 0 -searchsize 0 -revcomp -dna -bfile $hs1_bkgrnd $without_top.fasta #MJG use subset of data as input
+            meme -p $ncore -oc $meme_out -brief 100000 -evt $e_thresh -minsites $minsites -objfun $objfun -minw 8 -maxw 18 -wg 0 -ws 0 -searchsize 0 -revcomp -dna -bfile $hs1_bkgrnd $without_top.fasta #MJG use subset of data as input
           elif [[ "$tool" == "glam2" ]]
           then
             glam2 -Q -n 1000000 -z $minsites -a 8 -b 30 -w 16 -O $meme_out -2 n $without.fasta
